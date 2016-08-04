@@ -9,12 +9,14 @@
 //Add running game winner totals
 //Run on server
 //More than one game at a time
-
+//Weed out duplicate answers
 
 //FOR TESTING --- DON'T FORGET TO ADD GAMEMASTER PLAYER CLAUSE FOR REAL GAMEPLAY.
 
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
 
+require('./env.js');
+var port = process.env.PORT || process.env.port;
 
 if (!process.env.token) {
     console.log('Error: Specify token in environment');
@@ -175,6 +177,12 @@ controller.hears(['how to', 'identify yourself', 'who are you', 'what do you do'
             'You can ask for scores and how many answers left during the game by mentioning me.');
     });
 
+//Hello message.
+controller.hears(['hey', 'hello', 'yo'],
+    'direct_message,direct_mention,mention',
+    function(bot, message) {
+        bot.reply(message, 'It was 99 cents.');
+    });
 
 //Game set up in DM.
 controller.hears(['start'], 'direct_message', function(bot, message) {
