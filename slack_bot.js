@@ -7,7 +7,6 @@
 
 //TO DO:
 //Add running game winner totals
-//Run on server
 //More than one game at a time
 //Weed out duplicate answers
 
@@ -16,7 +15,7 @@
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
 
 require('./env.js');
-var port = process.env.PORT || process.env.port;
+var port = process.env.PORT || 3000;
 
 if (!process.env.token) {
     console.log('Error: Specify token in environment');
