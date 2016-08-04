@@ -1,0 +1,7 @@
+{
+  "name": "Triviabot",
+  "description": "A trivia bot for slack",
+  "repository": "https://github.com/myochum/Triviabot",
+  "keywords": ["node", "express", "static"],
+  "image": "heroku/nodejs"
+}
