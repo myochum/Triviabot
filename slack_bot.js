@@ -71,13 +71,12 @@ var startGame = function(question, answers, channel, gameMaster) {
         //Make sure answer is from the corret question and not from person who made the game.
         var player = message.user;
         var answerChannel = message.channel
-        var channelData;
 
         //Grab channel info
         controller.storage.channels.get(answerChannel, function(err, data) {
-            channelData = data;
 
-            if (player !== channelData.gameMaster && answerChannel === channel) { //!== gameMaster
+            //game master not working?
+            if (player !== data.gameMaster && answerChannel === channel) { //!== gameMaster
 
                 //Immediately pop off answer first to make sure no one else gets a point
                 answers.splice(answers.indexOf(message.text), 1);
@@ -95,7 +94,7 @@ var startGame = function(question, answers, channel, gameMaster) {
                 });
 
                 //Grab player scores
-                    var scores = channelData.scores || {};
+                    var scores = data.scores || {};
                     //Increase players score
                     if (!scores[player]) {
                         scores[player] = 1;
@@ -183,7 +182,7 @@ controller.hears(['start'], 'direct_mention,mention', function(bot, message) {
     });
 });
 
-//Repeats the question asked
+//Repeats the question asked -- this needs work
 controller.hears(['question'], 'direct_mention,mention', function(bot, message) {
     controller.storage.channels.get(message.channel, function(err, channel_data) {
         if (err || !channel_data.gameOn) {
@@ -212,6 +211,7 @@ controller.hears(['score'], 'direct_mention,mention', function(bot, message) {
 //Prints the scores and answers. Stops the game.
 controller.hears(['stop', 'reset', 'give up'], 'direct_mention,mention', function(bot, message) {
     controller.storage.channels.get(message.channel, function(err, channel_data) {
+        console.log(channel_data.gameOn);
         if (err || !channel_data.gameOn) {
             bot.reply(message, 'There isn\'t a game happening!');
         } else {
