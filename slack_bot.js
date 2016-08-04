@@ -54,12 +54,12 @@ var bot = controller.spawn({
 //.....................................MAIN METHODS................................//
 
 //For grabbing current scores.
-var getScores = function() {
+var getScores = function(scoreData) {
     var scoresString = '';
-    for (var key in scores) {
-        if (scores.hasOwnProperty(key)) {
+    for (var key in scoreData) {
+        if (scoreData.hasOwnProperty(key)) {
             var playerName = '<@' + key + '>';
-            scoresString += playerName + " : " + scores[key] + '\n';
+            scoresString += playerName + " : " + scoreData[key] + '\n';
         }
     }
     return scoresString;
@@ -71,56 +71,71 @@ var startGame = function(question, answers, channel, gameMaster) {
         //Make sure answer is from the corret question and not from person who made the game.
         var player = message.user;
         var answerChannel = message.channel
-        if (player !== gameMaster && answerChannel === channel) {
+        var channelData;
 
-            //Immediately pop off answer first to make sure no one else gets a point
-            answers.splice(answers.indexOf(message.text), 1);
+        //Grab channel info
+        controller.storage.channels.get(answerChannel, function(err, data) {
+            channelData = data;
 
-            //Add reaction for correct answer.
-            bot.api.reactions.add({
-                timestamp: message.ts,
-                channel: answerChannel,
-                name: '100'
-            }, function(err, res) {
-                if (err) {
-                    bot.botkit.log('Failed to add emoji reaction:', err);
+            if (player !== channelData.gameMaster && answerChannel === channel) { //!== gameMaster
+
+                //Immediately pop off answer first to make sure no one else gets a point
+                answers.splice(answers.indexOf(message.text), 1);
+                controller.storage.channels.save({ id: answerChannel, scores: answers }, function(err, id) {});
+
+                //Add reaction for correct answer.
+                bot.api.reactions.add({
+                    timestamp: message.ts,
+                    channel: answerChannel,
+                    name: '100'
+                }, function(err, res) {
+                    if (err) {
+                        bot.botkit.log('Failed to add emoji reaction:', err);
+                    }
+                });
+
+                //Grab player scores
+                    var scores = channelData.scores || {};
+                    //Increase players score
+                    if (!scores[player]) {
+                        scores[player] = 1;
+                    } else {
+                        scores[player] += 1;
+                    }
+                    //Update new scores
+                    controller.storage.channels.save({ id: answerChannel, scores: scores }, function(err, id) {});
+            
+
+                //See if its game over
+                if (!answers.length) {
+                    //Game over, return scores
+                    gameOver(channel, message);
                 }
-            });
-
-            //Grab player scores
-            controller.storage.channels.get(answerChannel, function(err, data) {
-                var scores = data.scores || {};
-                //Increase players score
-                if (!scores[player]) {
-                    scores[player] = 1;
-                } else {
-                    scores[player] += 1;
-                }
-                //Update new scores
-                controller.storage.channels.save({id: answerChannel, scores: scores}, function(err, id) {});
-            });
-
-            //See if its game over
-            if (!answers.length) {
-                //Game over, return scores
-                gameOn = false;
-                triviaQuestion.length = '';
-                var scoresString = getScores();
-                bot.reply(message, 'Thats game over! Scores: ' + scoresString);
             }
-        }
+        });
 
     });
 };
 
-var gameOver = function(channel) {
+var gameOver = function(channel, message) {
+    //Print out game winning info.
+    var scores;
+    controller.storage.channels.get(channel, function(err, data) {
+        scores = data.scores;
+        //correctAnswers = data.storedAnswers;
+        //Update new scores
+        var reply = 'Game Over! \n';
+        var scoresString = getScores(scores);
+        bot.reply(message, reply + 'Scores: \n' + scoresString);
+    });
+    //Remove all the channel data so a new game could start.
     var removeData = {};
     removeData['id'] = channel;
     removeData['question'] = undefined;
     removeData['answers'] = undefined;
     removeData['gameOn'] = false;
-    removeData['gameMaster'] = channel;
-    controller.storage.channels.save({id: channel, scores: scores}, function(err, id) {});
+    removeData['gameMaster'] = undefined;
+    controller.storage.channels.save({ id: channel, scores: scores }, function(err, id) {});
 };
 
 //..................................CONTROLLERS......................................//
@@ -129,88 +144,92 @@ var gameOver = function(channel) {
 controller.hears(['start'], 'direct_mention,mention', function(bot, message) {
     //See if channel has a game playing
     controller.storage.channels.get(message.channel, function(err, channel_data) {
-        if (!err || channel_data.gameOn) {
+        if (channel_data && channel_data.gameOn) {
             bot.reply(message, 'You are already playing a game here! Tell me to give up if you quit');
             return;
         }
     });
     //See if user has a game stored
     controller.storage.users.get(message.user, function(err, user_data) {
-        if (err)
+        if (err || !user_data || !user_data.question || !user_data.answers) {
             bot.reply(message, 'There isn\'t a question set up. Direct message me saying \'start\' to set up a game!');
-        else
-        //Everything is good so set it up.
+        } else {
+            //Everything is good so set it up.
             var question = user_data.question;
-        var answers = user_data.answers;
-        bot.reply(message, 'Trivia Begins! ' + question +
-            '. There are ' + answers.length + ' answers.');
+            var correctAnswers = user_data.answers;
+            bot.reply(message, 'Trivia Begins! ' + question +
+                '. There are ' + correctAnswers.length + ' answers.');
 
-        //Save game to channel
-        controller.storage.teams.save({
-            id: message.channel,
-            question: question,
-            answers: answers,
-            storedAnswers: answers,
-            gameOn: true
-        }, function(err) {});
+            //Save game to channel
+            controller.storage.channels.save({
+                id: message.channel,
+                question: question,
+                answers: correctAnswers,
+                storedAnswers: correctAnswers,
+                gameOn: true,
+                gameMaster: message.user
+            }, function(err) {});
 
-        //Remove from user store
-        var user_data = {};
-        user_data['id'] = message.user
-        user_data['question'] = undefined;
-        user_data['answers'] = undefined;
-        controller.storage.users.save(user_data, function(err) {});
+            //Remove from user store
+            var user_data = {};
+            user_data['id'] = message.user
+            user_data['question'] = undefined;
+            user_data['answers'] = undefined;
+            controller.storage.users.save(user_data, function(err) {});
 
-        startGame(question, answers, message.channel, message.user);
+            startGame(question, correctAnswers, message.channel, message.user);
+        }
 
     });
 });
 
 //Repeats the question asked
 controller.hears(['question'], 'direct_mention,mention', function(bot, message) {
-
-    //Grab the question
-    if (gameOn) {
-        bot.reply(message, 'The question is: ' + triviaQuestion);
-    } else {
-        bot.reply(message, 'There isn\'t a game happening!');
-    }
-
+    controller.storage.channels.get(message.channel, function(err, channel_data) {
+        if (err || !channel_data.gameOn) {
+            bot.reply(message, 'There isn\'t a game happening!');
+        } else {
+            bot.reply(message, 'The question is: ' + channel_data.question);
+        }
+    });
 });
 
 //Prints the scores
 controller.hears(['score'], 'direct_mention,mention', function(bot, message) {
-    if (gameOn) {
-        var scoresString = getScores();
-        bot.reply(message, 'Scores: ' + scoresString);
-    } else {
-        bot.reply(message, 'There isn\'t a game happening!');
-    }
+    controller.storage.channels.get(message.channel, function(err, channel_data) {
+        if (err || !channel_data.gameOn) {
+            bot.reply(message, 'There isn\'t a game happening!');
+        } else {
+            var scoreData = channel_data.scores;
+            var scoresString = getScores(scoreData);
+            bot.reply(message, 'Scores: ' + scoresString);
+        }
+    });
 
 });
 
 
 //Prints the scores and answers. Stops the game.
 controller.hears(['stop', 'reset', 'give up'], 'direct_mention,mention', function(bot, message) {
-    if (gameOn) {
-        gameOn = false;
-        triviaQuestion = '';
-        var reply = 'The answers were: ' + storeAnswers.replace(/,/g, ', ') + '.\n';
-        var scoresString = getScores();
-        bot.reply(message, reply + 'Scores: \n' + scoresString);
-    } else {
-        bot.reply(message, 'There isn\'t a game happening!');
-    }
+    controller.storage.channels.get(message.channel, function(err, channel_data) {
+        if (err || !channel_data.gameOn) {
+            bot.reply(message, 'There isn\'t a game happening!');
+        } else {
+            gameOver(message.channel, message);
+        }
+    });
 
 });
 
 //Displays remaining answers
 controller.hears(['answer'], 'direct_mention,mention', function(bot, message) {
-    if (gameOn) {
-        bot.reply(message, 'There are ' + answers.length + ' answer(s) left.');
-    } else {
-        bot.reply(message, 'There isn\'t a game happening!');
-    }
+    controller.storage.channels.get(message.channel, function(err, channel_data) {
+        if (err || !channel_data.gameOn) {
+            bot.reply(message, 'There isn\'t a game happening!');
+        } else {
+            bot.reply(message, 'There are ' + channel_data.answers.length + ' answer(s) left.');
+        }
+    });
 
 });
 
