@@ -5,61 +5,13 @@
            \ \_____\  \ \_____\    \ \_\  \ \_\ \_\  \ \_\    \ \_\
             \/_____/   \/_____/     \/_/   \/_/\/_/   \/_/     \/_/
 
+//TO DO:
+//Add running game winner totals
+//Run on server
+//More than one game at a time
 
-This is a sample Slack bot built with Botkit.
 
-This bot demonstrates many of the core features of Botkit:
-
-* Connect to Slack using the real time API
-* Receive messages based on "spoken" patterns
-* Reply to messages
-* Use the conversation system to ask questions
-* Use the built in storage system to store and retrieve information
-  for a user.
-
-# RUN THE BOT:
-
-  Get a Bot token from Slack:
-
-    -> http://my.slack.com/services/new/bot
-
-  Run your bot from the command line:
-
-    token=<MY TOKEN> node slack_bot.js
-
-# USE THE BOT:
-
-  Find your bot inside Slack to send it a direct message.
-
-  Say: "Hello"
-
-  The bot will reply "Hello!"
-
-  Say: "who are you?"
-
-  The bot will tell you its name, where it is running, and for how long.
-
-  Say: "Call me <nickname>"
-
-  Tell the bot your nickname. Now you are friends.
-
-  Say: "who am I?"
-
-  The bot will tell you your nickname, if it knows one for you.
-
-  Say: "shutdown"
-
-  The bot will ask if you are sure, and then shut itself down.
-
-  Make sure to invite your bot into other channels using /invite @<my bot>!
-
-# EXTEND THE BOT:
-
-  Botkit has many features for building cool and useful bots!
-
-  Read all about it here:
-
-    -> http://howdy.ai/botkit
+//FOR TESTING --- DON'T FORGET TO ADD GAMEMASTER PLAYER CLAUSE FOR REAL GAMEPLAY.
 
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
 
@@ -80,167 +32,177 @@ var bot = controller.spawn({
     token: process.env.token
 }).startRTM();
 
+var triviaQuestion = '';
+var answers = [];
+var scores = {};
+var storeAnswers = [];
 
-controller.hears(['hello', 'hi'], 'direct_message,direct_mention,mention', function(bot, message) {
+var gameOn = false;
+var gameMaster = '';
 
-    bot.api.reactions.add({
-        timestamp: message.ts,
-        channel: message.channel,
-        name: 'robot_face',
-    }, function(err, res) {
-        if (err) {
-            bot.botkit.log('Failed to add emoji reaction :(', err);
+
+//.....................................MAIN METHODS................................//
+
+//For grabbing current scores.
+var getScores = function() {
+    var scoresString = '';
+    for (var key in scores) {
+        if (scores.hasOwnProperty(key)) {
+            var playerName = '<@' + key + '>';
+            scoresString += playerName + " : " + scores[key] + '\n';
         }
-    });
+    }
+    return scoresString;
+};
 
+//Main game method.
+var startGame = function() {
+    controller.hears(answers, 'ambient', function(bot, message) {
+        //This is a token need to fix
+        var player = message.user;
+        if (player) { //!== gameMaster) {
 
-    controller.storage.users.get(message.user, function(err, user) {
-        if (user && user.name) {
-            bot.reply(message, 'Hello ' + user.name + '!!');
-        } else {
-            bot.reply(message, 'Hello.');
-        }
-    });
-});
+            //Immediately pop off answer
+            answers.splice(answers.indexOf(message.text), 1);
 
-controller.hears(['call me (.*)', 'my name is (.*)'], 'direct_message,direct_mention,mention', function(bot, message) {
-    var name = message.match[1];
-    controller.storage.users.get(message.user, function(err, user) {
-        if (!user) {
-            user = {
-                id: message.user,
-            };
-        }
-        user.name = name;
-        controller.storage.users.save(user, function(err, id) {
-            bot.reply(message, 'Got it. I will call you ' + user.name + ' from now on.');
-        });
-    });
-});
-
-controller.hears(['what is my name', 'who am i'], 'direct_message,direct_mention,mention', function(bot, message) {
-
-    controller.storage.users.get(message.user, function(err, user) {
-        if (user && user.name) {
-            bot.reply(message, 'Your name is ' + user.name);
-        } else {
-            bot.startConversation(message, function(err, convo) {
-                if (!err) {
-                    convo.say('I do not know your name yet!');
-                    convo.ask('What should I call you?', function(response, convo) {
-                        convo.ask('You want me to call you `' + response.text + '`?', [
-                            {
-                                pattern: 'yes',
-                                callback: function(response, convo) {
-                                    // since no further messages are queued after this,
-                                    // the conversation will end naturally with status == 'completed'
-                                    convo.next();
-                                }
-                            },
-                            {
-                                pattern: 'no',
-                                callback: function(response, convo) {
-                                    // stop the conversation. this will cause it to end with status == 'stopped'
-                                    convo.stop();
-                                }
-                            },
-                            {
-                                default: true,
-                                callback: function(response, convo) {
-                                    convo.repeat();
-                                    convo.next();
-                                }
-                            }
-                        ]);
-
-                        convo.next();
-
-                    }, {'key': 'nickname'}); // store the results in a field called nickname
-
-                    convo.on('end', function(convo) {
-                        if (convo.status == 'completed') {
-                            bot.reply(message, 'OK! I will update my dossier...');
-
-                            controller.storage.users.get(message.user, function(err, user) {
-                                if (!user) {
-                                    user = {
-                                        id: message.user,
-                                    };
-                                }
-                                user.name = convo.extractResponse('nickname');
-                                controller.storage.users.save(user, function(err, id) {
-                                    bot.reply(message, 'Got it. I will call you ' + user.name + ' from now on.');
-                                });
-                            });
-
-
-
-                        } else {
-                            // this happens if the conversation ended prematurely for some reason
-                            bot.reply(message, 'OK, nevermind!');
-                        }
-                    });
+            //Add reaction for correct answer.
+            bot.api.reactions.add({
+                timestamp: message.ts,
+                channel: message.channel,
+                name: '100'
+            }, function(err, res) {
+                if (err) {
+                    bot.botkit.log('Failed to add emoji reaction:', err);
                 }
             });
-        }
-    });
-});
 
+            //Increase players score
+            if (!scores[player]) {
+                scores[player] = 1;
+            } else {
+                scores[player] += 1;
+            }
 
-controller.hears(['shutdown'], 'direct_message,direct_mention,mention', function(bot, message) {
-
-    bot.startConversation(message, function(err, convo) {
-
-        convo.ask('Are you sure you want me to shutdown?', [
-            {
-                pattern: bot.utterances.yes,
-                callback: function(response, convo) {
-                    convo.say('Bye!');
-                    convo.next();
-                    setTimeout(function() {
-                        process.exit();
-                    }, 3000);
-                }
-            },
-        {
-            pattern: bot.utterances.no,
-            default: true,
-            callback: function(response, convo) {
-                convo.say('*Phew!*');
-                convo.next();
+            //See if its game over
+            if (!answers.length) {
+                //Game over, return scores
+                gameOn = false;
+                triviaQuestion.length = '';
+                var scoresString = getScores();
+                bot.reply(message, 'Thats game over! Scores: ' + scoresString);
             }
         }
-        ]);
+
     });
+};
+
+//..................................CONTROLLERS......................................//
+
+//Start a game with a mention.
+controller.hears(['start'], 'direct_mention,mention', function(bot, message) {
+
+    //Grab the question
+    if (triviaQuestion.length) {
+        if (gameOn) {
+            bot.reply(message, 'There is already a game happening!');
+        } else {
+            gameOn = true;
+            bot.reply(message, 'Trivia Begins! The question is: ' + triviaQuestion +
+                '. There are ' + answers.length + ' answers.');
+            //add in number of answers here
+            startGame();
+        }
+    } else {
+        bot.reply(message, 'There isn\'t a question set up. Direct message me saying \'start\' to set up a game!');
+    }
+
+});
+
+//Repeats the question asked
+controller.hears(['question'], 'direct_mention,mention', function(bot, message) {
+
+    //Grab the question
+    if (gameOn) {
+        bot.reply(message, 'The question is: ' + triviaQuestion);
+    } else {
+        bot.reply(message, 'There isn\'t a game happening!');
+    }
+
+});
+
+//Prints the scores
+controller.hears(['score'], 'direct_mention,mention', function(bot, message) {
+    if (gameOn) {
+        var scoresString = getScores();
+        bot.reply(message, 'Scores: ' + scoresString);
+    } else {
+        bot.reply(message, 'There isn\'t a game happening!');
+    }
+
 });
 
 
-controller.hears(['uptime', 'identify yourself', 'who are you', 'what is your name'],
-    'direct_message,direct_mention,mention', function(bot, message) {
+//Prints the scores and answers. Stops the game.
+controller.hears(['stop', 'reset', 'give up'], 'direct_mention,mention', function(bot, message) {
+    if (gameOn) {
+        gameOn = false;
+        triviaQuestion = '';
+        var reply = 'The answers were: ' + storeAnswers.replace(/,/g, ', ') + '.\n';
+        var scoresString = getScores();
+        bot.reply(message, reply + 'Scores: \n' + scoresString);
+    } else {
+        bot.reply(message, 'There isn\'t a game happening!');
+    }
 
-        var hostname = os.hostname();
-        var uptime = formatUptime(process.uptime());
+});
 
-        bot.reply(message,
-            ':robot_face: I am a bot named <@' + bot.identity.name +
-             '>. I have been running for ' + uptime + ' on ' + hostname + '.');
+//Displays remaining answers
+controller.hears(['answer'], 'direct_mention,mention', function(bot, message) {
+    if (gameOn) {
+        bot.reply(message, 'There are ' + answers.length + ' answer(s) left.');
+    } else {
+        bot.reply(message, 'There isn\'t a game happening!');
+    }
 
+});
+
+
+//How to message.
+controller.hears(['how to', 'identify yourself', 'who are you', 'what do you do', 'help'],
+    'direct_message,direct_mention,mention',
+    function(bot, message) {
+        bot.reply(message, 'I make trivia games! Send me a direct message with \'start\' and I will set up a game. Then go to a channel, mention me and say \'start game\' to begin! ' +
+            'You can ask for scores and how many answers left during the game by mentioning me.');
     });
 
-function formatUptime(uptime) {
-    var unit = 'second';
-    if (uptime > 60) {
-        uptime = uptime / 60;
-        unit = 'minute';
-    }
-    if (uptime > 60) {
-        uptime = uptime / 60;
-        unit = 'hour';
-    }
-    if (uptime != 1) {
-        unit = unit + 's';
-    }
 
-    uptime = uptime + ' ' + unit;
-    return uptime;
-}
+//Game set up in DM.
+controller.hears(['start'], 'direct_message', function(bot, message) {
+    bot.startConversation(message, function(err, convo) {
+        if (!err && !gameOn) {
+            convo.say('Lets get a game started.');
+            convo.ask('What\'s your trivia question?', function(response, convo) {
+                triviaQuestion = response.text;
+                convo.ask('So what are the top answers? Separate em by some commas (ex: cool, things, coolio)', function(response, convo) {
+                    var answerString = response.text.replace(/,\s+/g, ',');
+                    storeAnswers = answerString;
+                    answers = answerString.split(',');
+                    gameMaster = message.user;
+                    convo.next();
+                });
+                convo.next();
+            });
+            convo.on('end', function(convo) {
+                if (convo.status == 'completed') {
+                    bot.reply(message, 'OK! The game is ready to go with ' + triviaQuestion + ' and ' +
+                        answers.toString().replace(/,/g, ', ') + '. If this is wrong, just say start again!');
+                } else {
+                    // this happens if the conversation ended prematurely for some reason
+                    bot.reply(message, 'OK, nevermind!');
+                }
+            });
+        } else if (gameOn) {
+            bot.reply(message, 'Sorry a game is being played!');
+        }
+    });
+});
