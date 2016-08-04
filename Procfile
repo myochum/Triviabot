@@ -1,1 +1,1 @@
-worker: node slack_bot.js
+worker: node slack_bot.js -p $PORT
