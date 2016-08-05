@@ -8,6 +8,9 @@
 //TO DO:
 //Add running game winner totals - pointless? storage gets wiped if bot stops from inactivity
 
+//BUGS:
+//if multiple answers start with the same word, second answer doesn't get emoji
+
 //FOR TESTING --- DON'T FORGET TO ADD GAMEMASTER PLAYER CLAUSE FOR REAL GAMEPLAY.
 
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
@@ -184,8 +187,6 @@ controller.hears(['start'], 'direct_mention,mention', function(bot, message) {
             //Everything is good so set it up.
             var question = user_data.question;
             var correctAnswers = user_data.answers;
-            bot.reply(message, 'Trivia Begins! ' + question +
-                ' There are ' + correctAnswers.length + ' answers.');
 
             //Store channel data
             var channelData = {};
@@ -208,7 +209,10 @@ controller.hears(['start'], 'direct_mention,mention', function(bot, message) {
             user_data['answers'] = undefined;
             controller.storage.users.save(user_data, function(err) {});
 
+            bot.reply(message, 'Trivia Begins! ' + question +
+                ' There are ' + correctAnswers.length + ' answers.');
             startGame(question, correctAnswers, message.channel, message.user);
+
         }
 
     });
