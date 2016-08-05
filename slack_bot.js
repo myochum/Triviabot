@@ -113,7 +113,7 @@ var startGame = function(question, answers, channel, gameMaster) {
                     name: '100'
                 }, function(err, res) {
                     if (err) {
-                        bot.botkit.log('Failed to add emoji reaction:', err);
+                        bot.botkit.log('Failed to add emoji reaction:', err + message.text);
                     }
                 });
 
