@@ -44,14 +44,46 @@ var bot = controller.spawn({
 //.....................................MAIN METHODS................................//
 
 //For grabbing and sorting current scores.
-var getScores = function(scoreData) {
+var getScores = function(scoreData, isFinal) {
     var scoresString = '';
     var scoreArray = [];
+    var formatedScoresArray = [];
+    //Put scores in array
     for (var key in scoreData) {
-        if (scoreData.hasOwnProperty(key)) {
-            var playerName = '<@' + key + '>';
-            scoresString = playerName + " : " + scoreData[key] + '\n';
+        scoreArray.push([key, scoreData[key]]);
+    }
+    //Sort em
+    scoreArray.sort(function(a, b) {
+        return a[1] - b[1];
+    });
+    //Format the names and scores together
+    for (var i = scoreArray.length - 1; i >= 0; i--) {
+        var name = scoreArray[i][0];
+        var score = scoreArray[i][1];
+        var playerName = '<@' + name + '>';
+        formatedScoresArray.push(playerName + " : " + score);
+    }
+    //Add in the medals if final and print!
+    for (var i = 0; i < formatedScoresArray.length; i++) {
+        var formattedScore = formatedScoresArray[i];
+        if (isFinal) {
+            switch (i) {
+                case 0:
+                    formattedScore += ' :gold: \n';
+                    break;
+                case 1:
+                    formattedScore += ' :silver: \n';
+                    break;
+                case 2:
+                    formattedScore += ' :bronze: \n';
+                    break;
+                default:
+                    formattedScore += '\n';
+            }
+        } else {
+            formattedScore += '\n';
         }
+        scoresString += formattedScore;
     }
     return scoresString;
 };
@@ -113,7 +145,7 @@ var gameOver = function(channel, message) {
         var scores = data.scores;
         var answers = data.storedAnswers;
         var reply = 'Game Over! \n The answers were:  ' + answers.replace(/,/g, ' | ') + '\n';
-        var scoresString = getScores(scores);
+        var scoresString = getScores(scores, true);
         if (!scoresString.length) {
             reply += 'No one got a correct answer. Macklemore wins today.';
         } else {
@@ -201,7 +233,7 @@ controller.hears(['score'], 'direct_mention,mention', function(bot, message) {
             bot.reply(message, 'There isn\'t a game happening!');
         } else {
             var scoreData = channel_data.scores;
-            var scoresString = getScores(scoreData);
+            var scoresString = getScores(scoreData, false);
             bot.reply(message, 'Scores: ' + scoresString);
         }
     });
