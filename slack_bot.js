@@ -6,9 +6,8 @@
             \/_____/   \/_____/     \/_/   \/_/\/_/   \/_/     \/_/
 
 //TO DO:
-//Add running game winner totals
-//More than one game at a time
-//Weed out duplicate answers
+//Add running game winner totals - pointless? storage gets wiped if bot stops from inactivity
+//Format winner scores
 
 //FOR TESTING --- DON'T FORGET TO ADD GAMEMASTER PLAYER CLAUSE FOR REAL GAMEPLAY.
 
@@ -20,10 +19,9 @@
 //Grab token and default port.
 require('./env.js');
 
-//
 var http = require('http');
 var port = process.env.PORT || 3000;
-//Create a server to avoid port timeout errors.
+//Create a server to avoid port timeout errors on heroku.
 http.createServer(function(request, response) {}).listen(port);
 
 if (!process.env.token) {
@@ -42,24 +40,17 @@ var bot = controller.spawn({
     token: process.env.token
 }).startRTM();
 
-//var triviaQuestion = '';
-//var answers = [];
-//var scores = {};
-//var storeAnswers = [];
-
-//var gameOn = false;
-//var gameMaster = '';
-
 
 //.....................................MAIN METHODS................................//
 
-//For grabbing current scores.
+//For grabbing and sorting current scores.
 var getScores = function(scoreData) {
     var scoresString = '';
+    var scoreArray = [];
     for (var key in scoreData) {
         if (scoreData.hasOwnProperty(key)) {
             var playerName = '<@' + key + '>';
-            scoresString += playerName + " : " + scoreData[key] + '\n';
+            scoresString = playerName + " : " + scoreData[key] + '\n';
         }
     }
     return scoresString;
@@ -76,11 +67,10 @@ var startGame = function(question, answers, channel, gameMaster) {
         controller.storage.channels.get(answerChannel, function(err, data) {
 
             //game master not working?
-            if (player !== data.gameMaster && answerChannel === channel) { //!== gameMaster
+            if (player && answerChannel === channel) { //!== gameMaster
 
                 //Immediately pop off answer first to make sure no one else gets a point
                 answers.splice(answers.indexOf(message.text), 1);
-                controller.storage.channels.save({ id: answerChannel, scores: answers }, function(err, id) {});
 
                 //Add reaction for correct answer.
                 bot.api.reactions.add({
@@ -94,16 +84,17 @@ var startGame = function(question, answers, channel, gameMaster) {
                 });
 
                 //Grab player scores
-                    var scores = data.scores || {};
-                    //Increase players score
-                    if (!scores[player]) {
-                        scores[player] = 1;
-                    } else {
-                        scores[player] += 1;
-                    }
-                    //Update new scores
-                    controller.storage.channels.save({ id: answerChannel, scores: scores }, function(err, id) {});
-            
+                var scores = data.scores || {};
+                //Increase players score
+                if (!scores[player]) {
+                    scores[player] = 1;
+                } else {
+                    scores[player] += 1;
+                }
+                //Update new scores
+                data.scores = scores;
+                controller.storage.channels.save(data, function(err, id) {});
+
 
                 //See if its game over
                 if (!answers.length) {
@@ -118,23 +109,27 @@ var startGame = function(question, answers, channel, gameMaster) {
 
 var gameOver = function(channel, message) {
     //Print out game winning info.
-    var scores;
     controller.storage.channels.get(channel, function(err, data) {
-        scores = data.scores;
-        //correctAnswers = data.storedAnswers;
-        //Update new scores
-        var reply = 'Game Over! \n';
+        var scores = data.scores;
+        var answers = data.storedAnswers;
+        var reply = 'Game Over! \n The answers were:  ' + answers.replace(/,/g, ' | ') + '\n';
         var scoresString = getScores(scores);
-        bot.reply(message, reply + 'Scores: \n' + scoresString);
+        if (!scoresString.length) {
+            reply += 'No one got a correct answer. Macklemore wins today.';
+        } else {
+            reply += 'Scores: \n' + scoresString;
+        }
+        bot.reply(message, reply);
     });
     //Remove all the channel data so a new game could start.
     var removeData = {};
     removeData['id'] = channel;
     removeData['question'] = undefined;
+    removeData['scores'] = undefined;
     removeData['answers'] = undefined;
     removeData['gameOn'] = false;
     removeData['gameMaster'] = undefined;
-    controller.storage.channels.save({ id: channel, scores: scores }, function(err, id) {});
+    controller.storage.channels.save(removeData, function(err, id) {});
 };
 
 //..................................CONTROLLERS......................................//
@@ -142,9 +137,11 @@ var gameOver = function(channel, message) {
 //Start a game with a mention.
 controller.hears(['start'], 'direct_mention,mention', function(bot, message) {
     //See if channel has a game playing
+    var gameOn = false;
     controller.storage.channels.get(message.channel, function(err, channel_data) {
         if (channel_data && channel_data.gameOn) {
             bot.reply(message, 'You are already playing a game here! Tell me to give up if you quit');
+            gameOn = true;
             return;
         }
     });
@@ -152,22 +149,26 @@ controller.hears(['start'], 'direct_mention,mention', function(bot, message) {
     controller.storage.users.get(message.user, function(err, user_data) {
         if (err || !user_data || !user_data.question || !user_data.answers) {
             bot.reply(message, 'There isn\'t a question set up. Direct message me saying \'start\' to set up a game!');
-        } else {
+        } else if (!gameOn) {
             //Everything is good so set it up.
             var question = user_data.question;
             var correctAnswers = user_data.answers;
             bot.reply(message, 'Trivia Begins! ' + question +
-                '. There are ' + correctAnswers.length + ' answers.');
+                ' There are ' + correctAnswers.length + ' answers.');
+
+            //Store channel data
+            var channelData = {};
+            channelData['id'] = message.channel;
+            channelData['question'] = question;
+            channelData['scores'] = undefined;
+            channelData['answers'] = correctAnswers;
+            channelData['gameOn'] = true;
+            channelData['gameMaster'] = message.user;
+            //Use this to return all the answers at the end of the game.
+            channelData['storedAnswers'] = correctAnswers.toString();
 
             //Save game to channel
-            controller.storage.channels.save({
-                id: message.channel,
-                question: question,
-                answers: correctAnswers,
-                storedAnswers: correctAnswers,
-                gameOn: true,
-                gameMaster: message.user
-            }, function(err) {});
+            controller.storage.channels.save(channelData, function(err) {});
 
             //Remove from user store
             var user_data = {};
@@ -238,8 +239,9 @@ controller.hears(['answer'], 'direct_mention,mention', function(bot, message) {
 controller.hears(['how to', 'identify yourself', 'who are you', 'what do you do', 'help'],
     'direct_message,direct_mention,mention',
     function(bot, message) {
-        bot.reply(message, 'I make trivia games! Send me a direct message with \'start\' and I will set up a game. Then go to a channel, mention me and say \'start game\' to begin! ' +
-            'You can ask for scores and how many answers left during the game by mentioning me.');
+        bot.reply(message, 'I make trivia games! Send me a direct message with \'start\' and we will set up a game. Then go to any channel, tell me to \'start\'.' +
+            'You can ask for current scores, how many answers are left, or what the question is during the game by asking me.' +
+            'Tell me to stop or give up to end the game.');
     });
 
 //Hello message.
@@ -251,26 +253,34 @@ controller.hears(['hey', 'hello', 'yo'],
 
 //Game set up in DM.
 controller.hears(['start'], 'direct_message', function(bot, message) {
-    //See if user has a game stored
+    //See if user has a game stored. If not, welcome message.
+    var replace = false;
     controller.storage.users.get(message.user, function(err, user_data) {
         if (!err && user_data && user_data.question) {
-            var question = user_data.question;
-            bot.reply(message, 'You have already set up this question:' + question);
-            return;
+            replace = true;
         }
-        //insert remove question here if want a new one.
     });
     bot.startConversation(message, function(err, convo) {
         var triviaQuestion;
         var answers;
         if (!err) {
-            convo.say('Lets get a game started.');
+            if (!replace) {
+                //Welcome message.
+                convo.say('Let\'s get a game started.');
+            }
             convo.ask('What\'s your trivia question?', function(response, convo) {
                 triviaQuestion = response.text;
-                convo.ask('So what are the top answers? Separate em by some commas (ex: cool, things, coolio)', function(response, convo) {
-                    var answerString = response.text.replace(/,\s+/g, ',');
-                    //storeAnswers = answerString;
-                    answers = answerString.split(',');
+                convo.ask('So what are the answers? Separate em by some commas (ex: cool, things, coolio)', function(response, convo) {
+                    //var answerString = response.text.replace(/\s+,\s+/g, ',');
+                    var answersRaw = response.text.split(',');
+                    //Remove any duplicates or extra white spaces
+                    answers = answersRaw.filter(function(item, pos) {
+                        return answersRaw.indexOf(item) == pos;
+                    });
+                    for (var i = 0; i < answers.length; i++) {
+                        var answer = answers[i];
+                        answers[i] = answer.trim();
+                    }
                     convo.next();
                 });
                 convo.next();
@@ -278,7 +288,8 @@ controller.hears(['start'], 'direct_message', function(bot, message) {
             convo.on('end', function(convo) {
                 if (convo.status == 'completed') {
                     bot.reply(message, 'OK! The game is ready to go with ' + triviaQuestion + ' and ' +
-                        answers.toString().replace(/,/g, ', ') + '. If this is wrong, just say start again!');
+                        answers.toString().replace(/,/g, ', ') + '. If this is wrong or you wanna change it, just say start again.');
+
                     //Store game in user
                     var user_data = {};
                     user_data['id'] = message.user
@@ -293,8 +304,6 @@ controller.hears(['start'], 'direct_message', function(bot, message) {
                     bot.reply(message, 'OK, nevermind!');
                 }
             });
-        } else if (gameOn) {
-            bot.reply(message, 'Sorry you are already leading a game.');
         }
     });
 });
