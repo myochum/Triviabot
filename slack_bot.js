@@ -209,10 +209,9 @@ controller.hears(['start'], 'direct_mention,mention', function(bot, message) {
             user_data['answers'] = undefined;
             controller.storage.users.save(user_data, function(err) {});
 
+            startGame(question, correctAnswers, message.channel, message.user);
             bot.reply(message, 'Trivia Begins! ' + question +
                 ' There are ' + correctAnswers.length + ' answers.');
-            startGame(question, correctAnswers, message.channel, message.user);
-
         }
 
     });
