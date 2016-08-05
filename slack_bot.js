@@ -69,13 +69,13 @@ var getScores = function(scoreData, isFinal) {
         if (isFinal) {
             switch (i) {
                 case 0:
-                    formattedScore += ' :gold: \n';
+                    formattedScore = ':gold: ' + formattedScore + '\n';
                     break;
                 case 1:
-                    formattedScore += ' :silver: \n';
+                    formattedScore = ':silver: ' + formattedScore + '\n';
                     break;
                 case 2:
-                    formattedScore += ' :bronze: \n';
+                    formattedScore = ':bronze: ' + formattedScore + '\n';
                     break;
                 default:
                     formattedScore += '\n';
@@ -234,7 +234,7 @@ controller.hears(['score'], 'direct_mention,mention', function(bot, message) {
         } else {
             var scoreData = channel_data.scores;
             var scoresString = getScores(scoreData, false);
-            bot.reply(message, 'Scores: ' + scoresString);
+            bot.reply(message, 'Scores: \n' + scoresString);
         }
     });
 
