@@ -7,7 +7,6 @@
 
 //TO DO:
 //Add running game winner totals - pointless? storage gets wiped if bot stops from inactivity
-//Format winner scores
 
 //FOR TESTING --- DON'T FORGET TO ADD GAMEMASTER PLAYER CLAUSE FOR REAL GAMEPLAY.
 
